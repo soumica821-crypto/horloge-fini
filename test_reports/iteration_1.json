@@ -1,0 +1,51 @@
+{
+  "summary": "First full run of backend + frontend tests on Horloge Joiner. Backend: 17/17 core pytest tests pass (auth/owner, gift cards, purchase plus the 24h/balance/freeze limits, HWID/regen/transfer, market rent/sell, ingest/report/poll/selfbot, blacklist, whitelist_only, ban). 1 edge test fails because remaining hours are rounded down. Frontend: owner login and Control Room, gift card generate/redeem/reuse, King 2h purchase, subscription countdown, script loader, Slots occupants, /admin redirect for normal users, Live Logs Join links and tier filters, filters saved after reload, stats chart and counters, leaderboard, marketplace create (>5.25 rejected), rent and History, SYSTEM FROZEN banner and Division Frozen button, regen/reset HWID, admin users add balance/whitelist all work. Main bug: a renter gets access but no key, so they cannot use the rental in-game.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/market/listings/{id}/buy (type=rent)", "issue": "Renter never gets a key: ensure_key(user) is only called in the sell branch. A new user who rents has access (/auth/me shows a king rented slot), but /api/script returns {locked:true}, /key/reset-hwid returns 'You don't have a key yet' and the Home script card says 'Buy access first'. The rental can't be used in-game. Fix: call await ensure_key(user) in the rent branch as well.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "remaining_hours() used by POST /api/market/listings", "issue": "Uses int floor, so a user who just bought 2h can only list 1h ('You only have 1h remaining'). A user with a 1h slot can never list ('Less than 1 hour remaining'). Sell listings also show/charge 1h less. Consider rounding or a small grace window."},
+      {"endpoint": "POST /api/auth/mock-login", "issue": "Anyone can log in as 'czr' and become owner while MOCK_LOGIN=true. This must be disabled before going live or once Discord OAuth is configured."},
+      {"endpoint": "POST /api/market/listings/{id}/buy (sell)", "issue": "Buyer's existing slot check uses holder(). A buyer who owns a slot in that division that is currently rented out passes the check and ends up owning two slots in the same division. /key/transfer has the same gap with a target who is renting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Header / mobile (390px)", "issue": "On mobile the nav links are squeezed to zero width and not reachable. The page also scrolls sideways (scrollWidth 434 > 390) and the logout button is cut off. There is no mobile menu.", "selector": "header nav", "priority": "MEDIUM"},
+      {"component": "SystemPanel freeze toggle", "issue": "The SYSTEM FROZEN banner (AuthContext settings) is not refreshed after the owner toggles freeze. The banner stays stale (missing after freezing, still shown after unfreezing) until a full page reload. Call auth refresh() after saveSettings.", "selector": "[data-testid='system-frozen-banner']", "priority": "LOW"},
+      {"component": "GiftCardsPanel", "issue": "navigator.clipboard?.writeText(...) is not awaited or caught. When clipboard permission is denied this throws an unhandled promise rejection (pageerror seen). Wrap it in try/catch.", "selector": "[data-testid='giftcard-generate-btn']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Marketplace rent -> Home", "issue": "Renter's Home script card shows 'Buy access first' even though the subscription card shows 'King · rented'. Caused by the missing key on the backend (see critical issue).", "affected_selectors": ["[data-testid='script-locked']", "[data-testid='subscription-card']"]}
+    ],
+    "design_issues": [
+      {"screen": "Marketplace History", "issues": ["Negative amounts render as '$-2.00' instead of '-$2.00'"]},
+      {"screen": "Home (seller with slot rented out)", "issues": ["The seller sees 'No Active Plan' with no sign that their slot is rented out or when it comes back"]},
+      {"screen": "Admin gift card rows", "issues": ["Copy button has no data-testid"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_horloge_api.py", "/app/backend/tests/test_horloge_edge.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "HIGH: call ensure_key(user) in the rent branch of buy_listing so renters get a key and the script loader",
+    "Fix remaining_hours flooring for listings (2h purchase should be listable as 2h; 1h slots should be listable)",
+    "Add a mobile nav (hamburger/sheet) and fix header horizontal overflow at 390px",
+    "Refresh AuthContext settings after admin settings changes so the frozen banner updates immediately",
+    "Catch clipboard writeText rejections in GiftCardsPanel",
+    "Before go-live: disable MOCK_LOGIN (anyone can become owner 'czr')"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 939 lines; split into routers (auth, slots, market, script, admin)",
+    "Owner identity is based on username only (both Discord and mock). Prefer a fixed owner discord_id",
+    "charge() runs before the slot insert with no transaction. Concurrent purchases can go past capacity (capacity is checked before charge)",
+    "list_listings runs a find_one per listing (N+1)"
+  ],
+  "updated_files": ["/app/backend/tests/test_horloge_api.py", "/app/backend/tests/test_horloge_edge.py"],
+  "success_rate": {"backend": "94% (17/18)", "frontend": "~90% (all requested desktop flows pass; mobile nav broken; renter script locked)"},
+  "test_credentials": "/app/memory/test_credentials.md is empty (template only). Used mock-login: owner 'czr', test users with prefix TEST_. BOT_API_TOKEN from backend/.env.",
+  "seed_data_creation": "Created TEST_* users (alice/bob/carol/dave/eve/edge with run suffixes, TEST_ui_2573, TEST_renter_ui, TEST_nosl0t), gift cards, slots, market listings and logs with job_id TEST_*. Settings restored: system_frozen=false, frozen_divisions=[], whitelist_only=false, demo_feed=true, global_blacklist=[], owner_selfbot=false.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && REACT_APP_BACKEND_URL=<url> BOT_API_TOKEN=<token> python -m pytest backend/tests/ (pytest.ini uses xdist -n with loadscope). After the fixes, test_horloge_edge.py should pass and a renter should get a key (GET /api/script locked=false). Roblox Join buttons are roblox:// links; only check the href. Recharts needs about 5s to animate before screenshots.",
+  "rca of the issue": "Renter has no key: buy_listing() calls ensure_key(user) only in the 'sell' else-branch, while /api/script requires user.key. Repro: a new user redeems a gift card, then rents a King listing; GET /api/script returns {locked:true}. Fix: move ensure_key(user) before the if/else."
+}

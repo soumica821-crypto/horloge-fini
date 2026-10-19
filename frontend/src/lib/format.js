@@ -11,7 +11,7 @@ export const TIER_META = {
   mid: { label: "Mid", color: "#FF2A85" },
 };
 
-export const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+export const money = (n) => `${Number(n) < 0 ? "-" : ""}$${Math.abs(Number(n || 0)).toFixed(2)}`;
 
 export const timeAgo = (iso) => {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

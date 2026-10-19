@@ -29,6 +29,11 @@ export default function SubscriptionCard() {
           ))}
         </div>
       )}
+      {(user?.rented_out || []).map((r) => (
+        <div key={r.division} className="mt-3 text-sm text-amber-300" data-testid={`rented-out-${r.division}`}>
+          Your {DIVISION_META[r.division].label} slot is rented out · back in {remaining(r.rent_until)}
+        </div>
+      ))}
     </section>
   );
 }

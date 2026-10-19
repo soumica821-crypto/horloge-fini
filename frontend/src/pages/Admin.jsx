@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import SystemPanel from "@/components/admin/SystemPanel";
 import SelfBotPanel from "@/components/admin/SelfBotPanel";
 import GiftCardsPanel from "@/components/admin/GiftCardsPanel";
@@ -17,7 +18,8 @@ const Stat = ({ label, value, testid }) => (
 
 export default function Admin() {
   const [o, setO] = useState(null);
-  const load = () => api.get("/admin/overview").then((r) => setO(r.data));
+  const { refresh } = useAuth();
+  const load = () => { api.get("/admin/overview").then((r) => setO(r.data)); refresh(); };
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, []);
   if (!o) return <div className="text-zinc-500">Loading…</div>;
 

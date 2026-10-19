@@ -15,8 +15,8 @@ export default function GiftCardsPanel({ reload }) {
   const gen = async () => {
     try {
       const r = await api.post("/admin/giftcards", { amount: Number(amount), count: Number(count) });
-      navigator.clipboard?.writeText(r.data.map((c) => c.code).join("\n"));
-      toast.success(`${r.data.length} gift card(s) generated & copied`);
+      try { await navigator.clipboard.writeText(r.data.map((c) => c.code).join("\n")); } catch { /* clipboard denied */ }
+      toast.success(`${r.data.length} gift card(s) generated`);
       load(); reload();
     } catch (e) { toast.error(errMsg(e)); }
   };
@@ -40,7 +40,7 @@ export default function GiftCardsPanel({ reload }) {
               <span className="font-mono text-sm flex-1">{c.code}</span>
               <span className="font-semibold text-emerald-400">{money(c.amount)}</span>
               <span className="w-40 text-right text-xs text-zinc-500">{c.redeemed_by ? `used by ${c.redeemed_by}` : timeAgo(c.created_at)}</span>
-              <button onClick={() => { navigator.clipboard.writeText(c.code); toast.success("Copied"); }} className="text-zinc-400 hover:text-white"><Copy className="h-4 w-4" /></button>
+              <button onClick={() => { navigator.clipboard.writeText(c.code).catch(() => {}); toast.success("Copied"); }} data-testid="giftcard-copy-btn" className="text-zinc-400 hover:text-white"><Copy className="h-4 w-4" /></button>
               {!c.redeemed_by && <button onClick={() => del(c.id)} data-testid="giftcard-delete-btn" className="text-zinc-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
             </div>
           ))}

@@ -25,18 +25,18 @@ export default function Header() {
   const nav = useNavigate();
   return (
     <header className="border-b border-white/5 bg-[#08080c]/85 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1400px] items-center gap-4 px-4 sm:px-8 py-3">
+      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-8 py-3 lg:flex-nowrap">
         <Logo />
         {settings.discord_invite && (
           <a href={settings.discord_invite} target="_blank" rel="noreferrer" data-testid="discord-invite-link"
             className="hidden md:inline text-[#7289FF] hover:text-[#9aaaff] ml-2">Discord</a>
         )}
-        <nav className="no-scrollbar flex flex-1 items-center gap-1 overflow-x-auto lg:justify-center">
+        <nav className="no-scrollbar order-last flex w-full min-w-0 items-center gap-1 overflow-x-auto lg:order-none lg:w-auto lg:flex-1 lg:justify-center">
           {LINKS.map(([to, label]) => <NavItem key={to} to={to} label={label} testid={`nav-${label.toLowerCase().replace(" ", "-")}`} />)}
           {user?.is_admin && <NavItem to="/admin" label={<span className="flex items-center gap-1.5"><Shield className="h-4 w-4" />Owner</span>} testid="nav-admin" />}
         </nav>
         {user && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="ml-auto flex items-center gap-2 shrink-0 lg:ml-0">
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] p-1 pr-1.5">
               <DepositDialog trigger={
                 <button data-testid="header-deposit-btn" className="grid h-8 w-8 place-items-center rounded-full bg-[#FF2A85]/15 text-[#FF5C9D] hover:bg-[#FF2A85]/25 transition-colors">

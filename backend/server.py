@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import math
 import random
 import secrets
 import string
@@ -208,7 +209,7 @@ class MockLogin(BaseModel):
 
 @api.post("/auth/mock-login")
 async def mock_login(body: MockLogin):
-    if not MOCK_LOGIN:
+    if not MOCK_LOGIN or (DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET):
         raise HTTPException(403, "Demo login disabled")
     name = body.username.strip()
     uid = await upsert_user(f"mock-{name.lower()}", name, name, None)
@@ -277,7 +278,9 @@ async def ensure_key(user):
 
 @api.get("/auth/me")
 async def me(user=Depends(current_user)):
-    return {**public_user(user), "access": await user_access(user)}
+    rented_out = [{"division": s["division"], "rent_until": s["rent_until"].isoformat()}
+                  for s in await live_slots() if s["user_id"] == user["id"] and holder(s) != user["id"]]
+    return {**public_user(user), "access": await user_access(user), "rented_out": rented_out}
 
 
 @api.get("/settings/public")
@@ -380,7 +383,7 @@ async def transfer(body: Transfer, user=Depends(current_user)):
     mine = next((x for x in slots if x["user_id"] == user["id"] and holder(x) == user["id"]), None)
     if not mine:
         raise HTTPException(400, "No active slot (not rented out) in this division")
-    if any(x["user_id"] == target["id"] for x in slots):
+    if any(target["id"] in (holder(x), x["user_id"]) for x in slots):
         raise HTTPException(400, "Target already owns a slot in this division")
     await ensure_key(target)
     await db.slots.update_one({"id": mine["id"]}, {"$set": {"user_id": target["id"]}})
@@ -533,7 +536,7 @@ class ListingIn(BaseModel):
 
 
 def remaining_hours(slot):
-    return max(0, int((slot["expires_at"] - now()).total_seconds() // 3600))
+    return max(0, math.ceil(((slot["expires_at"] - now()).total_seconds() - 60) / 3600))
 
 
 @api.post("/market/listings")
@@ -608,7 +611,7 @@ async def buy_listing(lid: str, body: BuyIn, user=Depends(current_user)):
     slot = await db.slots.find_one({"id": lst["slot_id"]}, {"_id": 0})
     if not slot or slot["expires_at"] <= now() or holder(slot) != lst["seller_id"]:
         raise HTTPException(400, "Seller's slot is not available")
-    if any(holder(x) == user["id"] for x in await live_slots(lst["division"])):
+    if any(user["id"] in (holder(x), x["user_id"]) for x in await live_slots(lst["division"])):
         raise HTTPException(400, "You already have access in this division")
     div = DIVISIONS[lst["division"]]["name"]
     if lst["type"] == "rent":
@@ -617,8 +620,9 @@ async def buy_listing(lid: str, body: BuyIn, user=Depends(current_user)):
             raise HTTPException(400, "Not enough hours available")
         cost = round(lst["price"] * hours, 2)
         await charge(user["id"], cost)
+        await ensure_key(user)
         await db.slots.update_one({"id": slot["id"]}, {"$set": {"rented_to": user["id"],
-                                                               "rent_until": now() + timedelta(hours=hours)}})
+                                                               "rent_until": min(now() + timedelta(hours=hours), slot["expires_at"])}})
         await db.market.update_one({"id": lid}, {"$set": {"status": "filled", "buyer": user["username"]}})
         note = f"Rented {div} key · {hours}h"
     else:
