@@ -29,7 +29,11 @@ client = AsyncIOMotorClient(os.environ["MONGO_URL"], tz_aware=True)
 db = client[os.environ["DB_NAME"]]
 
 JWT_SECRET = os.environ["JWT_SECRET"]
-OWNER = os.environ["OWNER_USERNAME"].lower()
+OWNER_DISCORD_ID = os.environ["OWNER_DISCORD_ID"]
+
+
+def is_owner(u):
+    return u.get("discord_id") == OWNER_DISCORD_ID
 BOT_TOKEN = os.environ["BOT_API_TOKEN"]
 FRONTEND_URL = os.environ["FRONTEND_URL"]
 PUBLIC_API = FRONTEND_URL.rstrip("/") + "/api"
@@ -130,7 +134,7 @@ async def current_user(authorization: Optional[str] = Header(None)):
         raise HTTPException(401, "User not found")
     if user.get("banned"):
         raise HTTPException(403, "You are banned")
-    user["is_admin"] = user["username"].lower() == OWNER
+    user["is_admin"] = is_owner(user)
     return user
 
 
@@ -145,14 +149,16 @@ async def upsert_user(discord_id, username, display_name, avatar):
     if existing:
         await db.users.update_one({"discord_id": discord_id}, {"$set": {
             "username": username, "display_name": display_name, "avatar": avatar}})
+        if discord_id == OWNER_DISCORD_ID and not existing.get("key"):
+            await db.users.update_one({"discord_id": discord_id}, {"$set": {"key": gen_code("HJ", 4), "whitelisted": True}})
         return existing["id"]
     uid = str(uuid.uuid4())
-    is_owner = username.lower() == OWNER
+    owner = discord_id == OWNER_DISCORD_ID
     await db.users.insert_one({
         "id": uid, "discord_id": discord_id, "username": username, "display_name": display_name,
         "avatar": avatar, "balance": 0.0, "total_spent": 0.0,
-        "key": gen_code("HJ", 4) if is_owner else None, "hwid": None, "hwid_reset_at": None,
-        "whitelisted": is_owner, "banned": False,
+        "key": gen_code("HJ", 4) if owner else None, "hwid": None, "hwid_reset_at": None,
+        "whitelisted": owner, "banned": False,
         "filters": {"blacklist": [], "whitelist": [], "min_value": 0, "auto_join": True, "self_bot": False},
         "created_at": now(),
     })
@@ -234,7 +240,7 @@ def slot_end_for(slot, uid):
 
 async def user_access(user):
     """Returns list of {division, expires_at, slot_id, rented} the user currently holds."""
-    if user["username"].lower() == OWNER:
+    if is_owner(user):
         return [{"division": d, "expires_at": None, "slot_id": None, "infinite": True} for d in DIVISIONS]
     out = []
     for s in await live_slots():
@@ -253,7 +259,7 @@ def allowed_tiers(access):
 
 def public_user(u):
     d = clean(u)
-    d["is_admin"] = u["username"].lower() == OWNER
+    d["is_admin"] = is_owner(u)
     return d
 
 
@@ -688,7 +694,7 @@ async def script_user(body: ScriptAuth):
         await db.users.update_one({"id": user["id"]}, {"$set": {"hwid": body.hwid}})
     elif user["hwid"] != body.hwid:
         raise HTTPException(403, "HWID mismatch - reset your HWID on the panel")
-    user["is_admin"] = user["username"].lower() == OWNER
+    user["is_admin"] = is_owner(user)
     return user
 
 
@@ -821,7 +827,7 @@ async def admin_patch_user(uid: str, body: UserPatch, user=Depends(admin_user)):
         upd["balance"] = round(max(0, body.balance), 2)
     if body.whitelisted is not None:
         upd["whitelisted"] = body.whitelisted
-    if body.banned is not None and target["username"].lower() != OWNER:
+    if body.banned is not None and not is_owner(target):
         upd["banned"] = body.banned
     if body.reset_hwid:
         upd["hwid"] = None
