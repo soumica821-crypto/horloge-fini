@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
-import { api, errMsg } from "@/lib/api";
 import { CodeBlock } from "@/components/home/ScriptCard";
 import { Card, saveSettings } from "@/components/admin/shared";
 
@@ -16,8 +14,6 @@ export default function SystemPanel({ o, reload }) {
   const s = o.settings;
   const [invite, setInvite] = useState(s.discord_invite);
   const toggleDiv = (d) => saveSettings({ frozen_divisions: s.frozen_divisions.includes(d) ? s.frozen_divisions.filter((x) => x !== d) : [...s.frozen_divisions, d] }, reload);
-  const test = async () => { try { const r = await api.post("/admin/logs/test"); toast.success(`Test log: ${r.data.name || "skipped"}`); } catch (e) { toast.error(errMsg(e)); } };
-  const clear = async () => { const r = await api.delete("/admin/logs/demo"); toast.success(`${r.data.deleted} demo logs deleted`); reload(); };
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -27,7 +23,6 @@ export default function SystemPanel({ o, reload }) {
           <Row key={d} label={`Freeze ${d}`} checked={s.frozen_divisions.includes(d)} onChange={() => toggleDiv(d)} testid={`freeze-${d}-switch`} />
         ))}
         <Row label="Whitelist only" hint="Only whitelisted users can buy slots" checked={s.whitelist_only} onChange={(v) => saveSettings({ whitelist_only: v }, reload)} testid="whitelist-only-switch" />
-        <Row label="Demo feed (MOCK)" hint="Inserts fake logs every minute until real bots run" checked={s.demo_feed} onChange={(v) => saveSettings({ demo_feed: v }, reload)} testid="demo-feed-switch" />
         <div className="mt-4 flex gap-2">
           <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Discord invite URL" data-testid="discord-invite-input"
             className="flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 outline-none" />
@@ -39,10 +34,6 @@ export default function SystemPanel({ o, reload }) {
         <div className="mt-4"><CodeBlock code={o.bot_loader} testid="bot-loader" /></div>
         <div className="label-xs mt-6">Ingest endpoint (header X-Bot-Token)</div>
         <div className="mt-2 font-mono text-xs text-zinc-400 break-all" data-testid="ingest-url">{o.ingest_url}</div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button onClick={test} data-testid="test-log-btn" className="btn-ghost rounded-xl px-4 py-2.5">Send test log</button>
-          <button onClick={clear} data-testid="clear-demo-btn" className="btn-ghost rounded-xl px-4 py-2.5 text-red-300">Delete demo logs</button>
-        </div>
       </Card>
     </div>
   );

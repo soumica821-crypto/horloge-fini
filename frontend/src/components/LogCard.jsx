@@ -36,7 +36,6 @@ export default function LogRow({ log, fresh }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate font-semibold">{log.name}</span>
           <MutationBadge m={log.mutation} />
-          {log.is_demo && <span className="rounded bg-white/10 px-1.5 text-[10px] text-zinc-400">DEMO</span>}
         </div>
         <div className="mt-1 text-xs text-zinc-500">{log.rarity} · {log.players ?? "?"}/8 players · {timeAgo(log.created_at)}</div>
       </div>

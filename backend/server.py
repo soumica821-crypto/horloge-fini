@@ -2,10 +2,8 @@ import os
 import re
 import uuid
 import math
-import random
 import secrets
 import string
-import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -53,7 +51,7 @@ DIVISIONS = {
 MAX_HOURS = 24
 MAX_RENT_PRICE = 5.25
 DEFAULT_SETTINGS = {"system_frozen": False, "frozen_divisions": [], "whitelist_only": False,
-                    "demo_feed": True, "global_blacklist": [], "discord_invite": "", "owner_selfbot": False}
+                    "global_blacklist": [], "discord_invite": "", "owner_selfbot": False}
 
 app = FastAPI()
 api = APIRouter(prefix="/api")
@@ -163,7 +161,7 @@ async def upsert_user(discord_id, username, display_name, avatar):
 
 @api.get("/auth/config")
 async def auth_config():
-    return {"discord_enabled": bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET), "mock_enabled": MOCK_LOGIN}
+    return {"discord_enabled": bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET), "mock_enabled": MOCK_LOGIN and not (DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET)}
 
 
 @api.get("/auth/discord/login")
@@ -426,7 +424,7 @@ async def set_filters(body: Filters, user=Depends(current_user)):
 
 
 # ---------------- Logs ----------------
-async def insert_log(name, mutation, job_id, place_id, players, generation="", source="bot", is_demo=False):
+async def insert_log(name, mutation, job_id, place_id, players, generation="", source="bot"):
     b = BY_NAME.get((name or "").strip().lower())
     mutation = mutation if mutation in MUTATIONS else "Normal"
     base = b["income"] if b else 0
@@ -441,7 +439,7 @@ async def insert_log(name, mutation, job_id, place_id, players, generation="", s
     doc = {"id": str(uuid.uuid4()), "name": b["name"] if b else name.strip(), "rarity": rarity,
            "image": b["image"] if b else None, "mutation": mutation, "value": value, "value_text": fmt_value(value),
            "tier": tier, "job_id": job_id, "place_id": place_id or PLACE_ID, "players": players,
-           "source": source, "is_demo": is_demo, "created_at": now()}
+           "source": source, "created_at": now()}
     await db.logs.insert_one(doc)
     return doc
 
@@ -787,7 +785,6 @@ class SettingsIn(BaseModel):
     system_frozen: Optional[bool] = None
     frozen_divisions: Optional[List[str]] = None
     whitelist_only: Optional[bool] = None
-    demo_feed: Optional[bool] = None
     global_blacklist: Optional[List[str]] = None
     discord_invite: Optional[str] = None
     owner_selfbot: Optional[bool] = None
@@ -876,40 +873,6 @@ async def revoke_slot(sid: str, user=Depends(admin_user)):
     return {"ok": True}
 
 
-def random_demo():
-    pool = [b for b in BRAINROTS if b["rarity"] in ("Secret", "OG")]
-    b = random.choices(pool, weights=[1 if x["rarity"] == "OG" else 4 for x in pool])[0]
-    mut = random.choices(list(MUTATIONS), weights=[30, 15, 10, 6, 5, 4, 3, 3, 2, 2, 1])[0]
-    return b["name"], mut
-
-
-@api.post("/admin/logs/test")
-async def test_log(user=Depends(admin_user)):
-    name, mut = random_demo()
-    doc = await insert_log(name, mut, str(uuid.uuid4()), PLACE_ID, random.randint(3, 8), source="demo", is_demo=True)
-    return clean(doc) if doc else {"skipped": True}
-
-
-@api.delete("/admin/logs/demo")
-async def clear_demo(user=Depends(admin_user)):
-    r = await db.logs.delete_many({"is_demo": True})
-    return {"deleted": r.deleted_count}
-
-
-# ---------------- Background demo feed ----------------
-async def demo_feed_loop():
-    while True:
-        try:
-            if (await get_settings())["demo_feed"]:
-                for _ in range(random.randint(1, 3)):
-                    name, mut = random_demo()
-                    await insert_log(name, mut, str(uuid.uuid4()), PLACE_ID, random.randint(3, 8),
-                                     source="demo", is_demo=True)
-        except Exception as e:  # keep loop alive
-            logger.error("demo feed error: %s", e)
-        await asyncio.sleep(60)
-
-
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("id", unique=True)
@@ -918,13 +881,6 @@ async def startup():
     await db.slots.create_index("expires_at")
     await db.giftcards.create_index("code", unique=True)
     await db.oauth_states.create_index("expires_at", expireAfterSeconds=0)
-    if await db.logs.count_documents({}) == 0:
-        for i in range(25):
-            name, mut = random_demo()
-            d = await insert_log(name, mut, str(uuid.uuid4()), PLACE_ID, random.randint(3, 8), source="demo", is_demo=True)
-            if d:
-                await db.logs.update_one({"id": d["id"]}, {"$set": {"created_at": now() - timedelta(minutes=random.randint(1, 1400))}})
-    asyncio.create_task(demo_feed_loop())
 
 
 app.include_router(api)

@@ -16,6 +16,12 @@ Site "Horloge Joiner" (style kawaifu.live): auto joiner Steal a Brainrot. Login 
 - API Lua : /script/auth, /script/poll (fenêtre de 8s), /script/report, /script/selfbot/status, /logs/ingest (X-Bot-Token)
 - Flux démo (MOCK) : faux logs toutes les 60s, désactivable dans Owner > System
 
+## Mise à jour (2026-10-19, itération 2)
+- Faux logs supprimés (flux démo, seeding, endpoints test, badge DEMO, boutons test du panel). Base nettoyée.
+- Discord OAuth réel activé (login démo désactivé).
+- Live Logs : Auto Join navigateur (ouvre roblox:// sur le meilleur nouveau log qui passe les filtres) + polling toutes les 2s
+- Le self bot owner pousse job_id + brainrots → distribués aux auto joiners des autres via /script/poll (vérifié par curl)
+
 ## Backlog
 - P0 : clés Discord OAuth (Client ID/Secret) → désactiver le login démo
 - P1 : valider le chemin de scan in-game (BillboardGui "AnimalOverhead") dans le vrai jeu ; ajuster les valeurs de base des brainrots
