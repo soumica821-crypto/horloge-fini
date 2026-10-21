@@ -443,6 +443,10 @@ async def insert_log(name, mutation, job_id, place_id, players, generation="", s
     tier = tier_for(rarity, value)
     if rarity != "OG" and value < s["min_log_value"]:
         return None
+    dup = {"job_id": job_id, "name": b["name"] if b else name.strip(), "mutation": mutation,
+           "created_at": {"$gte": now() - timedelta(minutes=10)}}
+    if await db.logs.find_one(dup, {"_id": 1}):
+        return None
     doc = {"id": str(uuid.uuid4()), "name": b["name"] if b else name.strip(), "rarity": rarity,
            "image": b["image"] if b else None, "mutation": mutation, "value": value, "value_text": fmt_value(value),
            "tier": tier, "job_id": job_id, "place_id": place_id or PLACE_ID, "players": players,
@@ -469,7 +473,7 @@ async def ingest(body: Ingest, x_bot_token: Optional[str] = Header(None)):
     if x_bot_token != BOT_TOKEN:
         raise HTTPException(401, "Invalid bot token")
     n = 0
-    for f in body.brainrots:
+    for f in body.brainrots[:120]:
         if await insert_log(f.name, f.mutation, body.job_id, body.place_id, body.players, f.generation, "bot"):
             n += 1
     await db.selfbot_runs.insert_one({"id": str(uuid.uuid4()), "job_id": body.job_id, "place_id": body.place_id,
@@ -774,7 +778,7 @@ async def script_report(body: Report):
             n += 1
     if body.selfbot and user["is_admin"]:
         await db.selfbot_runs.insert_one({"id": str(uuid.uuid4()), "job_id": body.job_id, "place_id": body.place_id,
-                                          "scanned": len(body.brainrots), "logged": n, "created_at": now()})
+                                          "scanned": len(body.brainrots), "logged": n, "source": "selfbot", "created_at": now()})
         return {"inserted": n, **await selfbot_stats()}
     return {"inserted": n}
 

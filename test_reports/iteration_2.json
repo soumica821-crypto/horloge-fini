@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only test of the self bot / Lua script / joiner flow. 16/16 pytest tests pass. Checked: client.lua, selfbot.lua and bot.lua?token= are served with __API__/__BOT_TOKEN__ filled in and pass luac5.1 -p. All three contain buildUI/ScreenGui, scan() (Plots > AnimalPodiums > AnimalOverhead, reading DisplayName/Mutation/Generation), deepScan() capped at 4.5s and hop(). The selfbot and bot scripts also call queue_on_teleport. A bad bot token gets 401. Owner selfbot status/set works and toggles settings.owner_selfbot. A non-owner gets 403 on both, and a wrong owner hwid gets 403. An owner report with Skibidi Toilet Gold, Dragon Cannelloni $250M/s and Noobini Pizzanini inserted 2 logs (og and peak; Noobini was filtered out) and recorded a run (runs+1, logged+2). A King user polling right after got both logs with job_id and place_id, both with the default 8s window and with since set to the auth server_time. A Russian user does not get OG logs. A non-owner report with selfbot=true inserts logs but records no run. A user with no slot gets empty poll logs, and /script/auth returns 402 for them. /script/settings auto_join=false is saved and shows up in /script/auth and /script/poll; a wrong hwid gets 403. /logs/ingest records a run with source 'bot', and it shows in admin overview selfbot_runs. Setting min_log_value to 0 lets a $5/s Noobini be logged with tier 'low'. Cleanup done: temp users, slots, logs and runs removed, owner_selfbot=true, min_log_value=1000000, owner key and hwid unchanged. In-game Roblox execution was not tested.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/script/report and /api/logs/ingest", "issue": "No dedupe: if a hop fails (TeleportInitFailed), the selfbot or bot rescans the same server after 6s and reports it again. The same brainrot and job_id get logged twice, and joiners can be sent to the same server twice."},
+      {"endpoint": "POST /api/logs/ingest", "issue": "No cap on the brainrots list (report caps it at 120)."},
+      {"endpoint": "selfbot_runs from /script/report", "issue": "Docs have no 'source' field (only ingest sets source='bot'). Add source='selfbot' so the admin UI can tell them apart."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_selfbot_scripts.py", "/app/test_reports/pytest/pytest_selfbot.xml"],
+  "action_items": [
+    "Optional: skip a log when the same name+mutation+job_id was logged in the last ~60s",
+    "Optional: cap the brainrots list in Ingest at 120, the same as in Report",
+    "Optional: add source='selfbot' to selfbot_runs inserted by /script/report"
+  ],
+  "critical_code_review_comments": [
+    "Poll race: the client sets since=server_time (t). insert_log sets created_at before its insert, so a log created just before t but inserted after the poll query may be missed. Consider since = server_time minus 1-2s; the client already dedupes with seen[log.id].",
+    "scan() runs workspace:GetDescendants() on every deepScan loop pass (every 0.35s, for up to 4.5s). On a full server this may cause frame hitches. The Plots/AnimalPodiums pass already covers most cases, so the full descendant walk could run only once or only as a fallback.",
+    "OWNER_SELFBOT: if hop() fails, the loop scans and reports the same server again after task.wait(6). It would be better to retry hop() several times before rescanning."
+  ],
+  "updated_files": ["/app/backend/tests/test_selfbot_scripts.py"],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend only requested)"},
+  "test_credentials": "Owner key HJ-3G8A-4U3L-ILM3-R0A7 with hwid 81ed694185a24c0388ef6e644fee3af3f6f50aedae9982f9bd0f5fd04479bc6f; BOT_API_TOKEN from backend/.env; JWT minted from JWT_SECRET",
+  "seed_data_creation": "Temp TEST_ users and slots were created in mongo and then all removed. Logs and selfbot_runs created during the test were deleted (both collections are back to 0 docs).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_selfbot_scripts.py; the module fixture cleans up after itself. Never modify the owner's key or hwid. luac5.1 is at /usr/bin/luac5.1. 'Dragon Cannelloni' is not in BY_NAME (only 'Hydra Dragon Cannelloni'), so it is stored with rarity Unknown and its value comes from generation."
+}
