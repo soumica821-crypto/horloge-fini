@@ -1,0 +1,32 @@
+{
+  "summary": "Backend-only test of the value parsing, dedupe, poll image and Lua script changes. 17/17 tests pass in /app/backend/tests/test_value_parsing_dedupe.py, run with min_log_value=0. Value parsing works through both /logs/ingest and /script/report: '$1/s' -> 1 ($1/s), '$1.5M/s' -> 1.5M ($1.50M/s), '$25K/s' -> 25000 ($25.00K/s). Generations without '/s' ('$4.5M', '19K', '') are ignored and the base income is used (Noobini 1; Gold 1.25; Diamond 1.5). '?/s' (has /s but no number) also falls back to base. Dedupe: the same job_id+name+mutation is not inserted twice (across requests and inside one batch). A different mutation or a different job_id is inserted. Dedupe ends after 10 minutes (checked by back-dating a log). /script/poll logs include the 'image' field (a wiki URL) with all the other fields. client.lua, selfbot.lua and bot.lua?token= all pass luac5.1 -p and contain: hop() that alternates Teleport(game.PlaceId, LP) with the server-list TeleportToPlaceInstance; readOverhead picking the label that contains '/s'; ViewportFrame from ReplicatedStorage.Models.Animals with a getcustomasset fallback; and addRow(name, image). client.lua has the joiningUntil guard. bot.lua with a bad token is rejected. Cleanup done: temp users, slots, logs and runs removed; min_log_value=1000000; owner_selfbot=true (its original value); owner key/hwid unchanged.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "db.logs (existing data)", "issue": "8 old logs remain from the old Lua with wrong values, e.g. Noobini Pizzanini / Lirilì Larilà / Talpa Di Fero / Svinina Bombardino all at '$14.00M/s' (source selfbot:horloge2021). Users still see wrong prices on the site until these are deleted. I did not delete them (not test data)."},
+      {"endpoint": "insert_log", "issue": "Brainrots that are not in BY_NAME (e.g. Mortaruga, Tartaruga Cisterna, Co Co Co Sahur, Los Tralaleritos, seen in existing bot logs) are stored with rarity 'Unknown' and image=null, so the website and panel have no picture for them. With no '/s' generation their value becomes 0 and they are dropped. Consider extending the brainrots catalog."},
+      {"endpoint": "insert_log dedupe", "issue": "Dedupe is find-then-insert with no unique index, so two reports for the same server at the same moment could still both insert. Low risk."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_value_parsing_dedupe.py", "/app/test_reports/pytest/pytest_iter3.xml"],
+  "action_items": [
+    "Image fallback: static.wikia.nocookie.net returns image/webp even with 'Accept: image/png'. Roblox getcustomasset most likely cannot decode WebP, so the web-image fallback in brainrotPic will probably show nothing. Fix: append '?format=original' to the image URL (verified: it returns image/png 150x203), either in brainrots.py image URLs or in webImage() in the Lua.",
+    "Delete the old wrong-value logs from db.logs (e.g. the '$14.00M/s' Noobini entries) so the site stops showing wrong prices.",
+    "Optional: add the missing brainrots (Mortaruga, Tartaruga Cisterna, Co Co Co Sahur, Los Tralaleritos, ...) to brainrots.py so they get rarity, base income and image."
+  ],
+  "critical_code_review_comments": [
+    "webImage(): imgCache[url]=false is set before the fetch, so a second row with the same brainrot that is added while the first download is in progress gets nil and never shows an image. Use a pending/wait pattern or retry.",
+    "The selfbot addRow passes no image (nil), so it only shows a picture when the model exists in ReplicatedStorage.Models.Animals. Fine but inconsistent with the client.",
+    "readOverhead '/s' detection is case-sensitive, and the backend check '\"/s\" in generation' is too. If the game ever shows '/S', the value is ignored. Consider lower-casing.",
+    "Selfbot TeleportInitFailed only updates the status; the loop still waits 6s and rescans the same server (dedupe now prevents duplicate logs, and the next hop() switches to the server list, so this is acceptable).",
+    "brainrotPic camera uses cf.LookVector of the bounding box; for models whose pivot faces away, the camera may view the back. Cosmetic."
+  ],
+  "updated_files": ["/app/backend/tests/test_value_parsing_dedupe.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "not tested (backend only requested)"},
+  "test_credentials": "Owner key HJ-3G8A-4U3L-ILM3-R0A7 / hwid 81ed694185a24c0388ef6e644fee3af3f6f50aedae9982f9bd0f5fd04479bc6f (unchanged); BOT_API_TOKEN from backend/.env; temp TEST_ king user created directly in mongo",
+  "seed_data_creation": "Temp TEST_ user and king slot, plus TEST_JOB_ logs and runs, were created and all removed by the module fixture. 8 old logs and 115 old selfbot_runs from before the test were left untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_value_parsing_dedupe.py and test_selfbot_scripts.py; both clean up after themselves (min_log_value restored to 1000000). luac5.1 is at /usr/bin/luac5.1. Wiki images are WebP unless '?format=original' is appended. In-game Roblox behaviour (teleports, ViewportFrame, getcustomasset) was not tested."
+}
