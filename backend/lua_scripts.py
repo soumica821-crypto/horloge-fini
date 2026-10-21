@@ -77,12 +77,54 @@ local function buildUI(title)
     return {status = status, stats = stats, button = button, list = list}
 end
 
+local imgCache = {}
+local getasset = getcustomasset or getsynasset
+local function webImage(url)
+    if not url or not getasset or not writefile or not req then return nil end
+    if imgCache[url] ~= nil then return imgCache[url] or nil end
+    imgCache[url] = false
+    local ok, res = pcall(req, {Url = url, Method = "GET", Headers = {["Accept"] = "image/png"}})
+    if ok and res and res.StatusCode == 200 and res.Body then
+        pcall(function() if makefolder and not (isfolder and isfolder("horloge")) then makefolder("horloge") end end)
+        local path = "horloge/" .. HttpService:GenerateGUID(false) .. ".png"
+        local ok2, asset = pcall(function() writefile(path, res.Body); return getasset(path) end)
+        if ok2 and asset then imgCache[url] = asset; return asset end
+    end
+    return nil
+end
+
+-- Brainrot picture: 3D model from the game (any brainrot), fallback to the website image
+local function brainrotPic(parent, name, url)
+    local box = new("Frame", {Size = UDim2.fromOffset(38, 38), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.fromRGB(16, 16, 22), BorderSizePixel = 0}, parent)
+    corner(box, 8)
+    local model
+    pcall(function() model = ReplicatedStorage.Models.Animals:FindFirstChild(name) end)
+    if model then
+        local ok = pcall(function()
+            local vp = new("ViewportFrame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Ambient = Color3.fromRGB(200, 200, 200), LightColor = Color3.new(1, 1, 1)}, box)
+            local clone = model:Clone()
+            clone.Parent = vp
+            local cf, size = clone:GetBoundingBox()
+            local cam = new("Camera", {FieldOfView = 40}, vp)
+            local dist = math.max(size.X, size.Y, size.Z) * 1.6
+            cam.CFrame = CFrame.new(cf.Position + cf.LookVector * dist + Vector3.new(0, size.Y * 0.15, 0), cf.Position)
+            vp.CurrentCamera = cam
+        end)
+        if ok then return end
+    end
+    task.spawn(function()
+        local asset = webImage(url)
+        if asset then new("ImageLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = asset, ScaleType = Enum.ScaleType.Fit}, box) end
+    end)
+end
+
 local rowOrder = 0
-local function addRow(ui, text, color, btnText, onClick)
+local function addRow(ui, text, color, btnText, onClick, name, image)
     rowOrder = rowOrder - 1
-    local row = new("Frame", {Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(24, 24, 32), BorderSizePixel = 0, LayoutOrder = rowOrder}, ui.list)
+    local row = new("Frame", {Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = Color3.fromRGB(24, 24, 32), BorderSizePixel = 0, LayoutOrder = rowOrder}, ui.list)
     corner(row, 8)
-    new("TextLabel", {Size = UDim2.new(1, btnText and -72 or -14, 1, 0), Position = UDim2.fromOffset(8, 0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = color or Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, row)
+    if name then brainrotPic(row, name, image) end
+    new("TextLabel", {Size = UDim2.new(1, (btnText and -72 or -14) - 44, 1, 0), Position = UDim2.fromOffset(50, 0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = color or Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, row)
     if btnText then
         local b = new("TextButton", {Size = UDim2.fromOffset(58, 24), Position = UDim2.new(1, -64, 0.5, -12), BackgroundColor3 = PINK, Text = btnText, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.new(1, 1, 1)}, row)
         corner(b, 6)
@@ -110,7 +152,12 @@ local function readOverhead(ov)
     local m = ov:FindFirstChild("Mutation", true)
     local mut = (m and m.Visible and txt(m)) or "Normal"
     if mut == "" or mut == "Mutation" then mut = "Normal" end
-    return {name = name, mutation = mut, generation = txt(ov:FindFirstChild("Generation", true)) or ""}
+    local gen = ""
+    for _, l in ipairs(ov:GetDescendants()) do
+        local t = txt(l)
+        if t and string.find(t, "/s", 1, true) then gen = t; break end
+    end
+    return {name = name, mutation = mut, generation = gen}
 end
 
 local ANIMALS = {}
@@ -168,21 +215,26 @@ local function httpGet(url)
     return nil
 end
 
+local hopTry = 0
 local function hop()
-    local placeId = game.PlaceId
-    local body = httpGet(("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true"):format(placeId))
+    hopTry = hopTry + 1
+    if hopTry % 2 == 1 then
+        TeleportService:Teleport(game.PlaceId, LP) -- random server
+        return
+    end
+    local body = httpGet(("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(game.PlaceId))
     local servers = {}
     if body then
         pcall(function()
-            for _, s in ipairs(HttpService:JSONDecode(body).data or {}) do
-                if s.id ~= game.JobId and s.playing and s.maxPlayers and s.playing < s.maxPlayers - 1 then table.insert(servers, s.id) end
+            for _, sv in ipairs(HttpService:JSONDecode(body).data or {}) do
+                if sv.id ~= game.JobId and sv.playing and sv.maxPlayers and sv.playing < sv.maxPlayers then table.insert(servers, sv.id) end
             end
         end)
     end
     if #servers > 0 then
-        TeleportService:TeleportToPlaceInstance(placeId, servers[math.random(1, #servers)], LP)
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LP)
     else
-        TeleportService:Teleport(placeId, LP)
+        TeleportService:Teleport(game.PlaceId, LP)
     end
 end
 '''
@@ -211,11 +263,15 @@ ui.button.MouseButton1Click:Connect(function()
     if r then autoJoin = r.auto_join; refreshBtn() end
 end)
 
+local joiningUntil = 0
 local function join(log)
+    if tick() < joiningUntil then return end
+    joiningUntil = tick() + 8
     ui.status.Text, ui.status.TextColor3 = ("Joining %s [%s] %s..."):format(log.name, log.mutation, log.value_text), PINK
     pcall(function() TeleportService:TeleportToPlaceInstance(log.place_id, log.job_id, LP) end)
 end
 TeleportService.TeleportInitFailed:Connect(function(_, result)
+    joiningUntil = 0
     ui.status.Text, ui.status.TextColor3 = "Join failed (" .. tostring(result) .. ") - waiting next log", RED
 end)
 
@@ -236,7 +292,7 @@ while true do
         for _, log in ipairs(data.logs) do
             if not seen[log.id] and log.job_id ~= game.JobId then
                 seen[log.id] = true
-                addRow(ui, ("%s [%s] %s"):format(log.name, log.mutation, log.value_text), TIER_COLORS[log.tier], "JOIN", function() join(log) end)
+                addRow(ui, ("%s [%s] %s"):format(log.name, log.mutation, log.value_text), TIER_COLORS[log.tier], "JOIN", function() joiningUntil = 0; join(log) end, log.name, log.image)
                 if not best then best = log end
             end
         end
@@ -280,7 +336,7 @@ cycle = function()
         local found, took = deepScan()
         local r, e = call("POST", "/script/report", {key = KEY, hwid = HWID, job_id = game.JobId, place_id = game.PlaceId, players = #Players:GetPlayers(), brainrots = found, selfbot = true})
         for _, b in ipairs(found) do
-            addRow(ui, ("%s [%s] %s"):format(b.name, b.mutation, b.generation), Color3.new(1, 1, 1))
+            addRow(ui, ("%s [%s] %s"):format(b.name, b.mutation, b.generation), Color3.new(1, 1, 1), nil, nil, b.name)
         end
         if r then
             setStats(r)

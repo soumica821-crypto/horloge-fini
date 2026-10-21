@@ -435,7 +435,8 @@ async def insert_log(name, mutation, job_id, place_id, players, generation="", s
     b = BY_NAME.get((name or "").strip().lower())
     mutation = mutation if mutation in MUTATIONS else "Normal"
     base = b["income"] if b else 0
-    value = parse_income(generation) or base * MUTATIONS[mutation]
+    gen_value = parse_income(generation) if "/s" in (generation or "") else None
+    value = gen_value if gen_value is not None else base * MUTATIONS[mutation]
     rarity = b["rarity"] if b else "Unknown"
     s = await get_settings()
     if name.strip().lower() in [x.lower() for x in s["global_blacklist"]]:
@@ -754,7 +755,7 @@ async def script_poll(body: Poll):
         n = x["name"].lower()
         if n in bl or (wl and n not in wl):
             continue
-        logs.append({k: x[k] for k in ("id", "name", "mutation", "value_text", "tier", "job_id", "place_id")})
+        logs.append({k: x.get(k) for k in ("id", "name", "mutation", "value_text", "tier", "job_id", "place_id", "image")})
     return {"logs": logs, "auto_join": f.get("auto_join", True), "server_time": t.isoformat()}
 
 
