@@ -17,7 +17,7 @@ export default function SelfBotPanel({ o, reload }) {
           <Radar className={`h-7 w-7 ${on ? "text-[#FF2A85] animate-pulse" : "text-zinc-500"}`} />
           <div>
             <div className="font-display text-xl font-bold">Owner Self Bot</div>
-            <div className="text-sm text-zinc-400">Scans every brainrot of the server in 1s, logs it, then hops to the next server. Loops until you stop it.</div>
+            <div className="text-sm text-zinc-400">Scans every brainrot of the server (under 5s), shares the job ID with every joiner, then hops to the next server. Loops until you stop it (here or with the in-game panel button).</div>
           </div>
         </div>
         <div className="mt-6 flex items-center justify-between rounded-2xl bg-black/30 p-4">
@@ -36,7 +36,7 @@ export default function SelfBotPanel({ o, reload }) {
           {o.selfbot_runs.length === 0 && <div className="text-sm text-zinc-500">No scans yet</div>}
           {o.selfbot_runs.map((r) => (
             <div key={r.id} className="flex justify-between rounded-xl bg-black/30 px-4 py-2 text-sm">
-              <span className="font-mono text-zinc-400">{r.job_id.slice(0, 18)}…</span>
+              <span className="font-mono text-zinc-400">{r.source === "bot" ? "BOT" : "SELF"} · {r.job_id.slice(0, 14)}…</span>
               <span>{r.scanned} scanned · <span className="text-emerald-400">{r.logged} logged</span> · {timeAgo(r.created_at)}</span>
             </div>
           ))}

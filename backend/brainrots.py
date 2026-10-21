@@ -4,7 +4,7 @@ RARITY_ORDER = ["Common", "Rare", "Epic", "Legendary", "Mythic", "Brainrot God",
 
 MUTATIONS = {
     "Normal": 1.0, "Gold": 1.25, "Diamond": 1.5, "Bloodrot": 2.5, "Candy": 4.0, "Lava": 6.0,
-    "Galaxy": 7.0, "Yin-Yang": 7.5, "Radioactive": 8.5, "Cursed": 9.0, "Divine": 10.0,
+    "Galaxy": 7.0, "Rainbow": 10.0, "Yin-Yang": 7.5, "Radioactive": 8.5, "Cursed": 9.0, "Divine": 10.0,
 }
 
 # (name, rarity, base income per second, image path) - base values approximate, editable later

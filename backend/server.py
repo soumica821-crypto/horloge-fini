@@ -45,17 +45,18 @@ DISCORD_API = "https://discord.com/api/v10"
 PLACE_ID = 109983668079237
 
 DIVISIONS = {
-    "king": {"name": "King", "capacity": 6, "price": 5.0, "tiers": ["og", "peak", "high", "mid"],
+    "king": {"name": "King", "capacity": 6, "price": 5.0, "tiers": ["og", "peak", "high", "mid", "low"],
              "desc": "Access to every log: OG, Peak, High and Mid."},
-    "slave": {"name": "Slave", "capacity": 10, "price": 3.0, "tiers": ["high", "mid"],
+    "slave": {"name": "Slave", "capacity": 10, "price": 3.0, "tiers": ["high", "mid", "low"],
               "desc": "Access to High and Mid logs."},
-    "russian": {"name": "Russian", "capacity": 12, "price": 1.25, "tiers": ["mid"],
+    "russian": {"name": "Russian", "capacity": 12, "price": 1.25, "tiers": ["mid", "low"],
                 "desc": "Access to Mid logs."},
 }
 MAX_HOURS = 24
 MAX_RENT_PRICE = 5.25
 DEFAULT_SETTINGS = {"system_frozen": False, "frozen_divisions": [], "whitelist_only": False,
-                    "global_blacklist": [], "discord_invite": "", "owner_selfbot": False}
+                    "global_blacklist": [], "discord_invite": "", "owner_selfbot": False,
+                    "min_log_value": 1_000_000}
 
 app = FastAPI()
 api = APIRouter(prefix="/api")
@@ -440,7 +441,7 @@ async def insert_log(name, mutation, job_id, place_id, players, generation="", s
     if name.strip().lower() in [x.lower() for x in s["global_blacklist"]]:
         return None
     tier = tier_for(rarity, value)
-    if tier == "low":
+    if rarity != "OG" and value < s["min_log_value"]:
         return None
     doc = {"id": str(uuid.uuid4()), "name": b["name"] if b else name.strip(), "rarity": rarity,
            "image": b["image"] if b else None, "mutation": mutation, "value": value, "value_text": fmt_value(value),
@@ -471,6 +472,8 @@ async def ingest(body: Ingest, x_bot_token: Optional[str] = Header(None)):
     for f in body.brainrots:
         if await insert_log(f.name, f.mutation, body.job_id, body.place_id, body.players, f.generation, "bot"):
             n += 1
+    await db.selfbot_runs.insert_one({"id": str(uuid.uuid4()), "job_id": body.job_id, "place_id": body.place_id,
+                                      "scanned": len(body.brainrots), "logged": n, "source": "bot", "created_at": now()})
     return {"inserted": n}
 
 
@@ -705,7 +708,19 @@ async def script_auth(body: ScriptAuth):
     if not access:
         raise HTTPException(402, "No active slot")
     return {"username": user["username"], "divisions": [a["division"] for a in access],
-            "self_bot": user["filters"].get("self_bot", False), "server_time": now().isoformat()}
+            "self_bot": user["filters"].get("self_bot", False), "auto_join": user["filters"].get("auto_join", True),
+            "server_time": now().isoformat()}
+
+
+class ScriptSettings(ScriptAuth):
+    auto_join: bool
+
+
+@api.post("/script/settings")
+async def script_settings(body: ScriptSettings):
+    user = await script_user(body)
+    await db.users.update_one({"id": user["id"]}, {"$set": {"filters.auto_join": body.auto_join}})
+    return {"auto_join": body.auto_join}
 
 
 class Poll(ScriptAuth):
@@ -753,14 +768,20 @@ async def script_report(body: Report):
     if not await user_access(user):
         raise HTTPException(402, "No active slot")
     n = 0
-    for f in body.brainrots[:60]:
+    for f in body.brainrots[:120]:
         if await insert_log(f.name, f.mutation, body.job_id, body.place_id, body.players, f.generation,
                             f"selfbot:{user['username']}"):
             n += 1
     if body.selfbot and user["is_admin"]:
-        await db.selfbot_runs.insert_one({"id": str(uuid.uuid4()), "job_id": body.job_id, "scanned": len(body.brainrots),
-                                          "logged": n, "created_at": now()})
+        await db.selfbot_runs.insert_one({"id": str(uuid.uuid4()), "job_id": body.job_id, "place_id": body.place_id,
+                                          "scanned": len(body.brainrots), "logged": n, "created_at": now()})
+        return {"inserted": n, **await selfbot_stats()}
     return {"inserted": n}
+
+
+async def selfbot_stats():
+    agg = await db.selfbot_runs.aggregate([{"$match": {"source": {"$ne": "bot"}}}, {"$group": {"_id": None, "runs": {"$sum": 1}, "logged": {"$sum": "$logged"}}}]).to_list(1)
+    return {"runs": agg[0]["runs"], "logged": agg[0]["logged"]} if agg else {"runs": 0, "logged": 0}
 
 
 @api.post("/script/selfbot/status")
@@ -768,7 +789,20 @@ async def selfbot_status(body: ScriptAuth):
     user = await script_user(body)
     if not user["is_admin"]:
         raise HTTPException(403, "Owner only")
-    return {"enabled": (await get_settings())["owner_selfbot"]}
+    return {"enabled": (await get_settings())["owner_selfbot"], **await selfbot_stats()}
+
+
+class SelfbotSet(ScriptAuth):
+    enabled: bool
+
+
+@api.post("/script/selfbot/set")
+async def selfbot_set(body: SelfbotSet):
+    user = await script_user(body)
+    if not user["is_admin"]:
+        raise HTTPException(403, "Owner only")
+    await db.settings.update_one({"_id": "global"}, {"$set": {"owner_selfbot": body.enabled}}, upsert=True)
+    return {"enabled": body.enabled}
 
 
 # ---------------- Admin ----------------
@@ -794,6 +828,7 @@ class SettingsIn(BaseModel):
     global_blacklist: Optional[List[str]] = None
     discord_invite: Optional[str] = None
     owner_selfbot: Optional[bool] = None
+    min_log_value: Optional[float] = None
 
 
 @api.put("/admin/settings")

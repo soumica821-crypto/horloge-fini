@@ -13,6 +13,7 @@ const Row = ({ label, hint, checked, onChange, testid }) => (
 export default function SystemPanel({ o, reload }) {
   const s = o.settings;
   const [invite, setInvite] = useState(s.discord_invite);
+  const [minVal, setMinVal] = useState(s.min_log_value);
   const toggleDiv = (d) => saveSettings({ frozen_divisions: s.frozen_divisions.includes(d) ? s.frozen_divisions.filter((x) => x !== d) : [...s.frozen_divisions, d] }, reload);
 
   return (
@@ -23,6 +24,12 @@ export default function SystemPanel({ o, reload }) {
           <Row key={d} label={`Freeze ${d}`} checked={s.frozen_divisions.includes(d)} onChange={() => toggleDiv(d)} testid={`freeze-${d}-switch`} />
         ))}
         <Row label="Whitelist only" hint="Only whitelisted users can buy slots" checked={s.whitelist_only} onChange={(v) => saveSettings({ whitelist_only: v }, reload)} testid="whitelist-only-switch" />
+        <div className="label-xs mt-4">Min value to log ($/s) - lower it to share more brainrots</div>
+        <div className="mt-2 flex gap-2">
+          <input type="number" value={minVal} onChange={(e) => setMinVal(e.target.value)} data-testid="min-log-value-input"
+            className="flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 outline-none" />
+          <button onClick={() => saveSettings({ min_log_value: Number(minVal) || 0 }, reload)} data-testid="save-min-log-btn" className="btn-primary rounded-xl px-4 font-semibold">Save</button>
+        </div>
         <div className="mt-4 flex gap-2">
           <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Discord invite URL" data-testid="discord-invite-input"
             className="flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 outline-none" />

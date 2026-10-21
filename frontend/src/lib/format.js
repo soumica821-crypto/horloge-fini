@@ -9,6 +9,7 @@ export const TIER_META = {
   peak: { label: "Peak", color: "#FFD400" },
   high: { label: "High", color: "#B45CFF" },
   mid: { label: "Mid", color: "#FF2A85" },
+  low: { label: "Low", color: "#7DD3FC" },
 };
 
 export const money = (n) => `${Number(n) < 0 ? "-" : ""}$${Math.abs(Number(n || 0)).toFixed(2)}`;
